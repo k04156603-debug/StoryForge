@@ -6,6 +6,7 @@ const routes = require('./routes');
 const errorHandler = require('./middleware/errorHandler');
 const morganMiddleware = require('./middleware/logger');
 const { apiLimiter } = require('./middleware/rateLimiter');
+const speedInsightsMiddleware = require('./middleware/speedInsights');
 const config = require('./config');
 
 const app = express();
@@ -28,6 +29,9 @@ app.use(compression());
 
 // ─── Logging ─────────────────────────────────────
 app.use(morganMiddleware);
+
+// ─── Speed Insights ──────────────────────────────
+app.use(speedInsightsMiddleware);
 
 // ─── Rate Limiting ───────────────────────────────
 app.use('/api', apiLimiter);
