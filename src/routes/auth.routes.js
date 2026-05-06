@@ -1,38 +1,25 @@
 const express = require('express');
 const passport = require('passport');
-const jwt = require('jsonwebtoken');
+const router = express.Router();
 const authController = require('../controllers/auth.controller');
 const { protect } = require('../middleware/auth');
-const config = require('../config');
 
-// Make sure passport strategy is loaded
-require('../config/passport');
-
-const router = express.Router();
-
-// ─── Email/Password Auth ─────────────────────────────────
+// ── Local auth ────────────────────────────────────────────────────────────────
 router.post('/signup', authController.signup);
 router.post('/login', authController.login);
 router.get('/me', protect, authController.getMe);
 
-// ─── Google OAuth ────────────────────────────────────────
-router.get(
-  '/google',
-  passport.authenticate('google', { scope: ['profile', 'email'], session: false })
-);
+// ── Sessions (devices) ────────────────────────────────────────────────────────
+router.get('/sessions', protect, authController.getSessions);
+router.delete('/sessions', protect, authController.revokeAllSessions);
+router.delete('/sessions/:id', protect, authController.revokeSession);
 
+// ── Google OAuth ──────────────────────────────────────────────────────────────
+router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
 router.get(
   '/google/callback',
-  passport.authenticate('google', { failureRedirect: `${config.frontendUrl}/login?error=google_failed`, session: false }),
-  (req, res) => {
-    // Generate JWT for the user
-    const token = jwt.sign({ id: req.user._id }, config.jwt.secret, {
-      expiresIn: config.jwt.expiresIn || '7d',
-    });
-
-    // Redirect to frontend with token
-    res.redirect(`${config.frontendUrl}/auth/callback?token=${token}`);
-  }
+  passport.authenticate('google', { session: false, failureRedirect: '/login' }),
+  authController.googleCallback
 );
 
 module.exports = router;
