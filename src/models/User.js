@@ -17,9 +17,11 @@ const userSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: [true, 'Please provide a password'],
     minlength: 8,
     select: false
+  },
+  googleId: {
+    type: String,
   },
   role: {
     type: String,
@@ -30,9 +32,9 @@ const userSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Hash password before saving
+// Hash password before saving (only if password exists and was modified)
 userSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) return next();
+  if (!this.password || !this.isModified('password')) return next();
   this.password = await bcrypt.hash(this.password, 12);
   next();
 });

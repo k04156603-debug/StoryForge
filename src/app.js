@@ -2,16 +2,23 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
+const passport = require('passport');
 const routes = require('./routes');
 const errorHandler = require('./middleware/errorHandler');
 const morganMiddleware = require('./middleware/logger');
 const { apiLimiter } = require('./middleware/rateLimiter');
 const config = require('./config');
 
+// Load passport Google strategy
+require('./config/passport');
+
 const app = express();
 
 // ─── Trust Proxy (required for Render/Heroku/Railway) ────
 app.set('trust proxy', 1);
+
+// ─── Passport ────────────────────────────────────
+app.use(passport.initialize());
 
 // ─── Security ────────────────────────────────────
 app.use(helmet());
