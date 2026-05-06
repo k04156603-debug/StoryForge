@@ -44,6 +44,12 @@ const config = {
   },
 
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
+  backendUrl: process.env.BACKEND_URL || 'http://localhost:5000',
+
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+  },
 };
 
 module.exports = config;
