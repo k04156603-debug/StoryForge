@@ -1,55 +1,43 @@
 const jwt = require('jsonwebtoken');
-const config = require('../config');
 const User = require('../models/User');
+const Session = require('../models/Session');
 const ApiError = require('../utils/ApiError');
+const config = require('../config');
 
-const protect = async (req, _res, next) => {
+exports.protect = async (req, res, next) => {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw ApiError.unauthorized('No token provided');
+    // 1. Extract token
+    let token;
+    if (req.headers.authorization?.startsWith('Bearer ')) {
+      token = req.headers.authorization.split(' ')[1];
+    }
+    if (!token) throw new ApiError(401, 'Not authenticated');
+
+    // 2. Verify JWT signature + expiry
+    let decoded;
+    try {
+      decoded = jwt.verify(token, config.jwt.secret);
+    } catch {
+      throw new ApiError(401, 'Invalid or expired token');
     }
 
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, config.jwt.secret);
-    
-    const user = await User.findById(decoded.id);
-    if (!user) {
-      throw ApiError.unauthorized('The user belonging to this token no longer exists');
+    // 3. Check token still exists in sessions (revocation check)
+    const session = await Session.findOne({ token });
+    if (!session) {
+      throw new ApiError(401, 'Session has been revoked. Please log in again.');
     }
+
+    // 4. Update lastActive timestamp
+    session.lastActive = new Date();
+    await session.save();
+
+    // 5. Attach user to request
+    const user = await User.findById(decoded.id);
+    if (!user) throw new ApiError(401, 'User no longer exists');
 
     req.user = user;
     next();
-  } catch (error) {
-    if (error instanceof ApiError) {
-      return next(error);
-    }
-    next(ApiError.unauthorized('Invalid or expired token'));
+  } catch (err) {
+    next(err);
   }
 };
-
-// Legacy support for 'auth' name if used elsewhere
-const auth = protect;
-
-const optionalAuth = async (req, _res, next) => {
-  try {
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.split(' ')[1];
-      const decoded = jwt.verify(token, config.jwt.secret);
-      const user = await User.findById(decoded.id);
-      if (user) {
-        req.user = user;
-      }
-    }
-  } catch {
-    // Silently continue without auth
-  }
-  next();
-};
-
-const generateToken = (payload) => {
-  return jwt.sign(payload, config.jwt.secret, { expiresIn: config.jwt.expiresIn });
-};
-
-module.exports = { auth, protect, optionalAuth, generateToken };
