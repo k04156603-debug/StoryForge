@@ -118,9 +118,7 @@ exports.getMe = async (req, res, next) => {
 // ── GET /api/auth/sessions ───────────────────────────────────────────────────
 exports.getSessions = async (req, res, next) => {
   try {
-    const currentToken = req.headers.authorization?.split(' ')[1];
     const sessions = await Session.find({ user: req.user._id }).sort({ lastActive: -1 });
-
     const data = sessions.map((s) => ({
       id: s._id,
       device: s.device,
@@ -129,7 +127,7 @@ exports.getSessions = async (req, res, next) => {
       ip: s.ip,
       lastActive: s.lastActive,
       createdAt: s.createdAt,
-      isCurrent: s.token === currentToken,
+      isCurrent: s.token === req.token,
     }));
 
     res.json({ success: true, data });
@@ -155,8 +153,7 @@ exports.revokeSession = async (req, res, next) => {
 // ── DELETE /api/auth/sessions ─────────────────────────────────────────────────
 exports.revokeAllSessions = async (req, res, next) => {
   try {
-    const currentToken = req.headers.authorization?.split(' ')[1];
-    await Session.deleteMany({ user: req.user._id, token: { $ne: currentToken } });
+    await Session.deleteMany({ user: req.user._id, token: { $ne: req.token } });
     res.json({ success: true, message: 'All other sessions revoked' });
   } catch (err) {
     next(err);
