@@ -31,11 +31,12 @@ exports.protect = async (req, res, next) => {
     session.lastActive = new Date();
     await session.save();
 
-    // 5. Attach user to request
+    // 5. Attach user — JWT is signed with { id: userId }
     const user = await User.findById(decoded.id);
     if (!user) throw new ApiError(401, 'User no longer exists');
 
     req.user = user;
+    req.token = token;
     next();
   } catch (err) {
     next(err);
