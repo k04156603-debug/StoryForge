@@ -3,7 +3,7 @@ const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const User = require('../models/User');
 const config = require('../config');
 
-if (config.google.clientId && config.google.clientSecret && config.google.clientId.trim() !== '') {
+if (config.google.clientId && config.google.clientSecret) {
   try {
     passport.use(
       new GoogleStrategy(
@@ -12,36 +12,32 @@ if (config.google.clientId && config.google.clientSecret && config.google.client
           clientSecret: config.google.clientSecret,
           callbackURL: `${config.backendUrl}/api/auth/google/callback`,
         },
-      async (accessToken, refreshToken, profile, done) => {
-        try {
-          // Check if user already exists
-          let user = await User.findOne({ email: profile.emails[0].value });
+        async (accessToken, refreshToken, profile, done) => {
+          try {
+            let user = await User.findOne({ email: profile.emails[0].value });
 
-          if (user) {
-            // User exists — just return them
+            if (user) {
+              return done(null, user);
+            }
+
+            user = await User.create({
+              name: profile.displayName,
+              email: profile.emails[0].value,
+              password: `google_${profile.id}_${Date.now()}`,
+              googleId: profile.id,
+            });
+
             return done(null, user);
+          } catch (err) {
+            return done(err, null);
           }
-
-          // New user — create account
-          user = await User.create({
-            name: profile.displayName,
-            email: profile.emails[0].value,
-            password: `google_${profile.id}_${Date.now()}`, // random password they won't use
-            googleId: profile.id,
-          });
-
-          return done(null, user);
-        } catch (err) {
-          return done(err, null);
         }
-      }
-    )
-  );
+      )
+    );
+    console.log('✅ Google OAuth Strategy initialized successfully.');
   } catch (error) {
     console.error('❌ Failed to initialize Google Strategy:', error.message);
   }
-} else {
-  console.warn('⚠️ Google OAuth credentials missing. Google Login will not work.');
 }
 
 passport.serializeUser((user, done) => done(null, user._id));
