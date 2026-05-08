@@ -1,4 +1,4 @@
-const pdfParse = require('pdf-parse');
+const pdfParse = require('pdf-parse/lib/pdf-parse.js');
 const mammoth = require('mammoth');
 const { cleanText } = require('../utils/helpers');
 const logger = require('../utils/logger');
