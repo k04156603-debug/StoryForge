@@ -3,14 +3,15 @@ const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const User = require('../models/User');
 const config = require('../config');
 
-if (config.google.clientId && config.google.clientSecret) {
-  passport.use(
-    new GoogleStrategy(
-      {
-        clientID: config.google.clientId,
-        clientSecret: config.google.clientSecret,
-        callbackURL: `${config.backendUrl}/api/auth/google/callback`,
-      },
+if (config.google.clientId && config.google.clientSecret && config.google.clientId.trim() !== '') {
+  try {
+    passport.use(
+      new GoogleStrategy(
+        {
+          clientID: config.google.clientId,
+          clientSecret: config.google.clientSecret,
+          callbackURL: `${config.backendUrl}/api/auth/google/callback`,
+        },
       async (accessToken, refreshToken, profile, done) => {
         try {
           // Check if user already exists
@@ -36,6 +37,9 @@ if (config.google.clientId && config.google.clientSecret) {
       }
     )
   );
+  } catch (error) {
+    console.error('❌ Failed to initialize Google Strategy:', error.message);
+  }
 } else {
   console.warn('⚠️ Google OAuth credentials missing. Google Login will not work.');
 }
