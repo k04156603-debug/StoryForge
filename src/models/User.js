@@ -39,9 +39,14 @@ userSchema.pre('save', async function(next) {
   next();
 });
 
-// Method to check if password is correct
+// Original method (kept for safety)
 userSchema.methods.correctPassword = async function(candidatePassword, userPassword) {
   return await bcrypt.compare(candidatePassword, userPassword);
+};
+
+// Added to match what auth.controller.js calls
+userSchema.methods.comparePassword = async function(candidatePassword) {
+  return await bcrypt.compare(candidatePassword, this.password);
 };
 
 const User = mongoose.model('User', userSchema);
