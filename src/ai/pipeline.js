@@ -12,29 +12,42 @@ const openaiConfig = { apiKey: config.openai.apiKey };
 if (config.openai.baseUrl) {
   openaiConfig.baseURL = config.openai.baseUrl;
 }
+
+// Add 60 second timeout to prevent hanging
+openaiConfig.timeout = 60000;
+openaiConfig.maxRetries = 0; // we handle retries ourselves
+
 const openai = new OpenAI(openaiConfig);
 
 /**
  * Call OpenAI with structured prompts
  */
 const callAI = async (systemPrompt, userPrompt, options = {}) => {
-  const response = await openai.chat.completions.create({
-    model: options.model || config.openai.model,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
-    ],
-    temperature: options.temperature ?? 0.3,
-    max_tokens: options.maxTokens || 4096,
-    response_format: { type: 'json_object' },
-  }, {
-    headers: {
-      'HTTP-Referer': config.frontendUrl || 'http://localhost:5173',
-      'X-Title': 'Story Forge',
-    }
-  });
+  logger.info(`Calling AI model: ${options.model || config.openai.model}`);
+  
+  try {
+    const response = await openai.chat.completions.create({
+      model: options.model || config.openai.model,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      temperature: options.temperature ?? 0.3,
+      max_tokens: options.maxTokens || 4096,
+      response_format: { type: 'json_object' },
+    }, {
+      headers: {
+        'HTTP-Referer': config.frontendUrl || 'http://localhost:5173',
+        'X-Title': 'Story Forge',
+      }
+    });
 
-  return response.choices[0].message.content;
+    logger.info(`AI call successful, tokens used: ${response.usage?.total_tokens}`);
+    return response.choices[0].message.content;
+  } catch (error) {
+    logger.error(`AI call failed: ${error.message}`, { status: error.status, code: error.code });
+    throw error;
+  }
 };
 
 /**
@@ -48,7 +61,7 @@ const extractFeatures = async (prdContent) => {
       const response = await callAI(
         featureExtractionPrompt.system,
         featureExtractionPrompt.user(prdContent),
-        { maxTokens: 8192 }
+        { maxTokens: 4096 }
       );
       const parsed = validateJsonResponse(response, ['features']);
       return validateFeatures(parsed);
@@ -85,7 +98,6 @@ const generateStories = async (features) => {
       { context: `Story Generation (${feature.name})`, maxRetries: 3 }
     );
 
-    // Attach feature reference to each story
     result.stories.forEach((story) => {
       story.featureName = feature.name;
     });
@@ -149,19 +161,15 @@ const mapDependencies = async (stories) => {
 const runFullPipeline = async (prdContent, onProgress) => {
   const progress = onProgress || (() => {});
 
-  // Stage 1: Feature Extraction
   progress(10, 'Extracting features from PRD...');
   const featureData = await extractFeatures(prdContent);
 
-  // Stage 2: Story Generation
   progress(30, 'Generating user stories...');
   const stories = await generateStories(featureData.features);
 
-  // Stage 3: Quality Analysis
   progress(60, 'Analyzing requirement quality...');
   const qualityData = await analyzeQuality(prdContent, featureData.features);
 
-  // Stage 4: Dependency Mapping
   progress(80, 'Mapping dependencies...');
   const dependencyData = await mapDependencies(stories);
 
