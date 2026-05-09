@@ -84,10 +84,18 @@ const generateStories = async (features) => {
   for (let i = 0; i < features.length; i++) {
     const feature = features[i];
     logger.info(`AI Pipeline: Generating stories for feature ${i + 1}/${features.length}: ${feature.name}`);
-
+    const result = await withRetry(
+      async () => {
+        const response = await callAI(
+          storyGenerationPrompt.system,
+          storyGenerationPrompt.user(feature),
+          { maxTokens: 4096 }
+        );
+        const parsed = validateJsonResponse(response, ['stories']);
+        return validateStories(parsed);
+      },
       { context: `Story Generation (${feature.name})`, maxRetries: 8 }
     );
- 
     result.stories.forEach((story) => {
       story.featureName = feature.name;
     });
