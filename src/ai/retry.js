@@ -23,16 +23,32 @@ const withRetry = async (fn, options = {}) => {
     } catch (error) {
       lastError = error;
       const isRetryable = isRetryableError(error);
+      const isRateLimit = error.status === 429 || error.message?.includes('Rate limit');
 
       logger.warn(`${context} attempt ${attempt}/${maxRetries} failed: ${error.message}`, {
         retryable: isRetryable,
+        status: error.status
       });
 
       if (!isRetryable || attempt === maxRetries) {
         break;
       }
 
-      const delay = baseDelay * Math.pow(2, attempt - 1) + Math.random() * 1000;
+      // Calculate delay
+      let delay = baseDelay * Math.pow(2, attempt - 1) + Math.random() * 1000;
+
+      // Special handling for rate limits - try to extract wait time from error message
+      if (isRateLimit) {
+        const match = error.message?.match(/try again in ([\d.]+)s/i);
+        if (match) {
+          const waitTimeSec = parseFloat(match[1]);
+          delay = (waitTimeSec + 0.5) * 1000; // Add 0.5s buffer
+          logger.info(`Rate limit detected. AI suggested waiting ${waitTimeSec}s. Using delay: ${delay}ms`);
+        } else {
+          delay = Math.max(delay, 3000); // Wait at least 3s for rate limits
+        }
+      }
+
       logger.info(`Retrying ${context} in ${Math.round(delay)}ms...`);
       await sleep(delay);
     }

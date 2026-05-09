@@ -66,7 +66,7 @@ const extractFeatures = async (prdContent) => {
       const parsed = validateJsonResponse(response, ['features']);
       return validateFeatures(parsed);
     },
-    { context: 'Feature Extraction', maxRetries: 3 }
+    { context: 'Feature Extraction', maxRetries: 5 }
   );
 
   logger.info(`AI Pipeline: Extracted ${result.features.length} features`);
@@ -85,24 +85,19 @@ const generateStories = async (features) => {
     const feature = features[i];
     logger.info(`AI Pipeline: Generating stories for feature ${i + 1}/${features.length}: ${feature.name}`);
 
-    const result = await withRetry(
-      async () => {
-        const response = await callAI(
-          storyGenerationPrompt.system,
-          storyGenerationPrompt.user(feature, i),
-          { maxTokens: 4096 }
-        );
-        const parsed = validateJsonResponse(response, ['stories']);
-        return validateStories(parsed);
-      },
-      { context: `Story Generation (${feature.name})`, maxRetries: 3 }
+      { context: `Story Generation (${feature.name})`, maxRetries: 8 }
     );
-
+ 
     result.stories.forEach((story) => {
       story.featureName = feature.name;
     });
-
+ 
     allStories.push(...result.stories);
+ 
+    // Add 1s breather to avoid hitting TPM limit
+    if (i < features.length - 1) {
+      await new Promise(r => setTimeout(r, 1000));
+    }
   }
 
   logger.info(`AI Pipeline: Generated ${allStories.length} total stories`);
@@ -125,7 +120,7 @@ const analyzeQuality = async (prdContent, features) => {
       const parsed = validateJsonResponse(response, ['issues']);
       return validateQualityIssues(parsed);
     },
-    { context: 'Quality Analysis', maxRetries: 3 }
+    { context: 'Quality Analysis', maxRetries: 5 }
   );
 
   logger.info(`AI Pipeline: Found ${result.issues.length} quality issues`);
@@ -148,7 +143,7 @@ const mapDependencies = async (stories) => {
       const parsed = validateJsonResponse(response, ['nodes', 'edges']);
       return validateDependencyGraph(parsed);
     },
-    { context: 'Dependency Mapping', maxRetries: 3 }
+    { context: 'Dependency Mapping', maxRetries: 5 }
   );
 
   logger.info(`AI Pipeline: Mapped ${result.nodes.length} nodes, ${result.edges.length} edges`);
