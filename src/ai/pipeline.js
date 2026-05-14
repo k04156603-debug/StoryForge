@@ -24,6 +24,7 @@ const openai = new OpenAI(openaiConfig);
  */
 const callAI = async (systemPrompt, userPrompt, options = {}) => {
   logger.info(`Calling AI model: ${options.model || config.openai.model}`);
+  console.log(`[AI DEBUG] Sending request to model: ${options.model || config.openai.model}`);
   
   try {
     const response = await openai.chat.completions.create({
@@ -42,6 +43,7 @@ const callAI = async (systemPrompt, userPrompt, options = {}) => {
       }
     });
 
+    console.log(`[AI DEBUG] Response received for stage. Length: ${response.choices[0].message.content.length}`);
     logger.info(`AI call successful, tokens used: ${response.usage?.total_tokens}`);
     return response.choices[0].message.content;
   } catch (error) {
@@ -55,6 +57,7 @@ const callAI = async (systemPrompt, userPrompt, options = {}) => {
  */
 const extractFeatures = async (prdContent) => {
   logger.info('AI Pipeline: Starting feature extraction');
+  console.log(`[AI DEBUG] Starting feature extraction. Content length: ${prdContent?.length || 0} chars`);
 
   const result = await withRetry(
     async () => {
