@@ -72,7 +72,7 @@ const extractFeatures = async (prdContent) => {
       const parsed = validateJsonResponse(response, ['features']);
       return validateFeatures(parsed);
     },
-    { context: 'Feature Extraction', maxRetries: 5 }
+    { context: 'Feature Extraction', maxRetries: 15 }
   );
 
   logger.info(`AI Pipeline: Extracted ${result.features.length} features`);
@@ -100,7 +100,7 @@ const generateStories = async (features) => {
         const parsed = validateJsonResponse(response, ['stories']);
         return validateStories(parsed);
       },
-      { context: `Story Generation (${feature.name})`, maxRetries: 8 }
+      { context: `Story Generation (${feature.name})`, maxRetries: 15 }
     );
     result.stories.forEach((story) => {
       story.featureName = feature.name;
@@ -108,9 +108,10 @@ const generateStories = async (features) => {
  
     allStories.push(...result.stories);
  
-    // Add 1s breather to avoid hitting TPM limit
+    // Add 10s breather to avoid hitting Groq's TPM limit (Free tier is only 6k TPM)
     if (i < features.length - 1) {
-      await new Promise(r => setTimeout(r, 1000));
+      console.log(`[AI DEBUG] Rate limit breather: Waiting 10 seconds before next feature...`);
+      await new Promise(r => setTimeout(r, 10000));
     }
   }
 
@@ -134,7 +135,7 @@ const analyzeQuality = async (prdContent, features) => {
       const parsed = validateJsonResponse(response, ['issues']);
       return validateQualityIssues(parsed);
     },
-    { context: 'Quality Analysis', maxRetries: 5 }
+    { context: 'Quality Analysis', maxRetries: 15 }
   );
 
   logger.info(`AI Pipeline: Found ${result.issues.length} quality issues`);
@@ -157,7 +158,7 @@ const mapDependencies = async (stories) => {
       const parsed = validateJsonResponse(response, ['nodes', 'edges']);
       return validateDependencyGraph(parsed);
     },
-    { context: 'Dependency Mapping', maxRetries: 5 }
+    { context: 'Dependency Mapping', maxRetries: 15 }
   );
 
   logger.info(`AI Pipeline: Mapped ${result.nodes.length} nodes, ${result.edges.length} edges`);
