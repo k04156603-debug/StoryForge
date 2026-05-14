@@ -1,15 +1,7 @@
 const featureExtractionPrompt = {
-  system: `You are an expert product analyst and requirements engineer. Your job is to analyze Product Requirements Documents (PRDs) and extract structured features from them.
-
-RULES:
-- Extract ALL distinct features, functional requirements, and capabilities described in the PRD
-- Identify all actors/users/personas mentioned
-- Map out user flows for each feature
-- Categorize features by importance (core, secondary, nice-to-have, infrastructure)
-- Assign priority (critical, high, medium, low) and complexity (simple, moderate, complex, very-complex)
-- Be thorough — missing a feature is worse than including a borderline one
-
-OUTPUT FORMAT: You MUST respond with valid JSON only, no markdown, no explanation.`,
+  system: `You are a high-speed requirements engineer. Extract core features, actors, and product overview from PRDs. 
+CRITICAL: Respond ONLY with valid JSON. No conversational text.
+PRIORITIZE: Accuracy and structural integrity.`,
 
   user: (prdContent) => `Analyze the following PRD and extract all features into structured JSON.
 

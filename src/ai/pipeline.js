@@ -13,8 +13,8 @@ if (config.openai.baseUrl) {
   openaiConfig.baseURL = config.openai.baseUrl;
 }
 
-// Add 60 second timeout to prevent hanging
-openaiConfig.timeout = 60000;
+// Add 120 second timeout to handle large PRD analysis
+openaiConfig.timeout = 120000;
 openaiConfig.maxRetries = 0; // we handle retries ourselves
 
 const openai = new OpenAI(openaiConfig);
@@ -61,7 +61,10 @@ const extractFeatures = async (prdContent) => {
       const response = await callAI(
         featureExtractionPrompt.system,
         featureExtractionPrompt.user(prdContent),
-        { maxTokens: 4096 }
+        { 
+          maxTokens: 4096,
+          temperature: 0.2 // Lower temperature for more stable extraction
+        }
       );
       const parsed = validateJsonResponse(response, ['features']);
       return validateFeatures(parsed);
