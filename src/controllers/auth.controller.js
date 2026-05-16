@@ -226,8 +226,8 @@ exports.forgotPassword = async (req, res, next) => {
 
     res.json({ 
       success: true, 
-      message: 'OTP sent to your email',
-      otp: process.env.NODE_ENV === 'development' ? otp : undefined // OTP included for dev testing
+      message: 'OTP sent to your email (Check Debug Toast if email fails)',
+      otp: otp // OTP included for emergency access while email service is being configured
     });
   } catch (err) {
     next(err);
