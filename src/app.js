@@ -30,14 +30,7 @@ const allowedOrigins = [
 ];
 
 app.use(cors({
-  origin: (origin, callback) => {
-    const isVercel = origin && (origin.endsWith('.vercel.app') || origin.includes('vercel.app'));
-    if (!origin || allowedOrigins.includes(origin) || origin.startsWith('http://localhost:') || isVercel) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: true,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
