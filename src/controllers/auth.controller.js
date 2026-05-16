@@ -1,8 +1,11 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Session = require('../models/Session');
+const OTP = require('../models/OTP');
 const ApiError = require('../utils/ApiError');
 const config = require('../config');
+const sendEmail = require('../utils/email');
+const crypto = require('crypto');
 
 // ── Helper: parse UA string ──────────────────────────────────────────────────
 function parseUA(uaString = '') {
@@ -41,6 +44,7 @@ function signToken(userId) {
 // ── POST /api/auth/signup ────────────────────────────────────────────────────
 exports.signup = async (req, res, next) => {
   try {
+    console.log('[DEBUG] Signup request body:', req.body);
     const { name, email, password } = req.body;
     if (!name || !email || !password)
       throw new ApiError(400, 'Name, email and password are required');
@@ -175,8 +179,116 @@ exports.googleCallback = async (req, res) => {
       ip: req.ip || '',
     });
 
-    res.redirect(`${config.frontendUrl}/auth/callback?token=${token}`);
+    const name = encodeURIComponent(req.user.name || '');
+    const email = encodeURIComponent(req.user.email || '');
+    res.redirect(`${config.frontendUrl}/auth/callback?token=${token}&name=${name}&email=${email}`);
   } catch {
     res.redirect(`${config.frontendUrl}/login?error=oauth_failed`);
+  }
+};
+
+// ── POST /api/auth/forgot-password ──────────────────────────────────────────
+exports.forgotPassword = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    if (!email) throw new ApiError(400, 'Email is required');
+
+    const user = await User.findOne({ email });
+    if (!user) throw new ApiError(404, 'User not found with this email');
+
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    // Save to DB
+    await OTP.deleteMany({ email }); // Clear previous
+    await OTP.create({ email, otp, expiresAt });
+
+    // Send Email
+    try {
+      await sendEmail({
+        email: user.email,
+        subject: 'Password Reset OTP - Story Forge',
+        message: `Your password reset OTP is: ${otp}. It will expire in 10 minutes.`,
+        html: `
+          <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+            <h2 style="color: #c4713b;">Story Forge Security</h2>
+            <p>You requested a password reset. Please use the following One-Time Password (OTP) to continue:</p>
+            <div style="font-size: 32px; font-weight: 800; letter-spacing: 5px; color: #1a1a1a; margin: 20px 0;">${otp}</div>
+            <p style="color: #666; font-size: 14px;">This code will expire in 10 minutes. If you didn't request this, please ignore this email.</p>
+          </div>
+        `,
+      });
+    } catch (err) {
+      console.error('Email error:', err);
+      throw new ApiError(500, 'Failed to send OTP email. Please check your email configuration.');
+    }
+
+    res.json({ success: true, message: 'OTP sent to your email' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── POST /api/auth/verify-otp ────────────────────────────────────────────────
+exports.verifyOTP = async (req, res, next) => {
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) throw new ApiError(400, 'Email and OTP are required');
+
+    const record = await OTP.findOne({ email, otp });
+    if (!record) throw new ApiError(400, 'Invalid or expired OTP');
+
+    record.verified = true;
+    await record.save();
+
+    res.json({ success: true, message: 'OTP verified successfully' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── POST /api/auth/reset-password ────────────────────────────────────────────
+exports.resetPassword = async (req, res, next) => {
+  try {
+    const { email, otp, password } = req.body;
+    if (!email || !otp || !password) throw new ApiError(400, 'Email, OTP and new password are required');
+
+    const record = await OTP.findOne({ email, otp, verified: true });
+    if (!record) throw new ApiError(400, 'OTP not verified or expired');
+
+    const user = await User.findOne({ email });
+    if (!user) throw new ApiError(404, 'User not found');
+
+    // Update password
+    user.password = password;
+    await user.save();
+
+    // Delete OTP record
+    await OTP.deleteMany({ email });
+
+    res.json({ success: true, message: 'Password reset successful. You can now login.' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── PATCH /api/auth/update-password ──────────────────────────────────────────
+exports.updatePassword = async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword)
+      throw new ApiError(400, 'Current and new password are required');
+
+    const user = await User.findById(req.user._id).select('+password');
+    if (!(await user.comparePassword(currentPassword)))
+      throw new ApiError(401, 'Current password is incorrect');
+
+    user.password = newPassword;
+    await user.save();
+
+    res.json({ success: true, message: 'Password updated successfully' });
+  } catch (err) {
+    next(err);
   }
 };

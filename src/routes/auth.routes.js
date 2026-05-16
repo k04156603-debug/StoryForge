@@ -13,6 +13,12 @@ router.get('/me', protect, authController.getMe);
 router.get('/sessions', protect, authController.getSessions);
 router.delete('/sessions', protect, authController.revokeAllSessions);
 router.delete('/sessions/:id', protect, authController.revokeSession);
+router.patch('/update-password', protect, authController.updatePassword);
+
+// ── Password Reset ────────────────────────────────────────────────────────────
+router.post('/forgot-password', authController.forgotPassword);
+router.post('/verify-otp', authController.verifyOTP);
+router.post('/reset-password', authController.resetPassword);
 
 // ── Google OAuth ──────────────────────────────────────────────────────────────
 router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
