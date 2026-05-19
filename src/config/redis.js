@@ -8,9 +8,7 @@ const getRedisClient = () => {
   if (redisClient) return redisClient;
 
   try {
-    redisClient = new Redis({
-      host: config.redis.host,
-      port: config.redis.port,
+    const commonOpts = {
       maxRetriesPerRequest: 1,
       retryStrategy(times) {
         if (times > 3) {
@@ -21,7 +19,18 @@ const getRedisClient = () => {
       },
       lazyConnect: true,
       enableOfflineQueue: false,
-    });
+    };
+
+    if (config.redis.url) {
+      redisClient = new Redis(config.redis.url, commonOpts);
+    } else {
+      redisClient = new Redis({
+        host: config.redis.host,
+        port: config.redis.port,
+        password: config.redis.password,
+        ...commonOpts,
+      });
+    }
 
     redisClient.on('connect', () => {
       logger.info('Redis connected');

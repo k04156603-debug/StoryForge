@@ -21,7 +21,21 @@ const checkRedis = (host, port, timeout = 2000) => {
 };
 
 const initQueue = async () => {
-  const redisAvailable = await checkRedis(config.redis.host, config.redis.port);
+  let host = config.redis.host;
+  let port = config.redis.port;
+
+  if (config.redis.url) {
+    try {
+      // Parse hostname and port from connection string for the socket test
+      const parsed = new URL(config.redis.url);
+      host = parsed.hostname;
+      port = parseInt(parsed.port, 10) || (parsed.protocol === 'rediss:' ? 6379 : 6379);
+    } catch (error) {
+      logger.warn('Could not parse REDIS_URL for connection check, using fallback host/port');
+    }
+  }
+
+  const redisAvailable = await checkRedis(host, port);
 
   if (!redisAvailable) {
     logger.warn('Redis not available — BullMQ queue disabled. Processing will run directly.');
@@ -33,11 +47,15 @@ const initQueue = async () => {
     const { Queue, Worker } = require('bullmq');
     const prdService = require('../services/prd.service');
 
-    const connection = {
-      host: config.redis.host,
-      port: config.redis.port,
-      maxRetriesPerRequest: 3,
-    };
+    // Use URL if provided, otherwise construct connection object
+    const connection = config.redis.url
+      ? config.redis.url
+      : {
+          host: config.redis.host,
+          port: config.redis.port,
+          password: config.redis.password,
+          maxRetriesPerRequest: 3,
+        };
 
     prdQueue = new Queue('prd-processing', { connection });
 
