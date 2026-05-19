@@ -3,6 +3,7 @@ const passport = require('passport');
 const router = express.Router();
 const authController = require('../controllers/auth.controller');
 const { protect } = require('../middleware/auth');
+const config = require('../config');
 
 // ── Local auth ────────────────────────────────────────────────────────────────
 router.post('/signup', authController.signup);
@@ -21,10 +22,27 @@ router.post('/verify-otp', authController.verifyOTP);
 router.post('/reset-password', authController.resetPassword);
 
 // ── Google OAuth ──────────────────────────────────────────────────────────────
-router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
+router.get('/google', (req, res, next) => {
+  if (!config.google.clientId || !config.google.clientSecret) {
+    return res.status(400).json({
+      success: false,
+      message: 'Google login is not configured in Vercel. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables.'
+    });
+  }
+  passport.authenticate('google', { scope: ['profile', 'email'] })(req, res, next);
+});
+
 router.get(
   '/google/callback',
-  passport.authenticate('google', { session: false, failureRedirect: '/login' }),
+  (req, res, next) => {
+    if (!config.google.clientId || !config.google.clientSecret) {
+      return res.status(400).json({
+        success: false,
+        message: 'Google login is not configured in Vercel.'
+      });
+    }
+    passport.authenticate('google', { session: false, failureRedirect: '/login' })(req, res, next);
+  },
   authController.googleCallback
 );
 
