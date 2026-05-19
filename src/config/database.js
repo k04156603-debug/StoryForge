@@ -28,7 +28,10 @@ const connectDatabase = async () => {
       logger.error('   Go to Atlas → Network Access → Add Current IP Address');
       logger.error('   Or add 0.0.0.0/0 to allow all IPs (not recommended for production)');
     }
-    process.exit(1);
+    // Prevent process.exit in serverless environments
+    if (!process.env.VERCEL) {
+      process.exit(1);
+    }
   }
 };
 
