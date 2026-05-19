@@ -51,6 +51,7 @@ app.use('/api', apiLimiter);
 
 // ─── Routes ──────────────────────────────────────
 app.use('/api', routes);
+app.use('/', routes); // Vercel Serverless fallback (Vercel sometimes strips /api)
 
 // ─── 404 Handler ─────────────────────────────────
 app.use((_req, res) => {
