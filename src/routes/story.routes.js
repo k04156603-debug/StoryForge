@@ -1,8 +1,12 @@
 const express = require('express');
 const storyController = require('../controllers/story.controller');
 const { validate, prdIdSchema, storyUpdateSchema } = require('../middleware/validator');
+const { protect, checkPrdAccess } = require('../middleware/auth');
 
 const router = express.Router();
+
+router.use(protect);
+router.use(checkPrdAccess);
 
 // Get all stories for a PRD (optionally grouped by feature)
 router.get('/:prdId', storyController.getStories);

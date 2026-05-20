@@ -12,7 +12,7 @@ const ApiError = require('../utils/ApiError');
 /**
  * Create a new PRD from file upload
  */
-const createFromFile = async (file, title) => {
+const createFromFile = async (file, title, userId) => {
   const parsed = await parseFile(file);
 
   const prd = await Prd.create({
@@ -27,6 +27,7 @@ const createFromFile = async (file, title) => {
     metadata: {
       estimatedTime: estimateProcessingTime(parsed.content.length),
     },
+    createdBy: userId ? userId.toString() : undefined,
   });
 
   logger.info(`PRD created from file: ${prd._id}`);
@@ -36,7 +37,7 @@ const createFromFile = async (file, title) => {
 /**
  * Create a new PRD from pasted content
  */
-const createFromPaste = async (content, title) => {
+const createFromPaste = async (content, title, userId) => {
   const cleaned = cleanText(content);
 
   if (cleaned.length < 50) {
@@ -54,6 +55,7 @@ const createFromPaste = async (content, title) => {
     metadata: {
       estimatedTime: estimateProcessingTime(cleaned.length),
     },
+    createdBy: userId ? userId.toString() : undefined,
   });
 
   logger.info(`PRD created from paste: ${prd._id}`);
@@ -198,20 +200,24 @@ const processPrd = async (prdId) => {
 /**
  * Get PRD by ID with processing status
  */
-const getPrdById = async (id) => {
+const getPrdById = async (id, userId) => {
   const prd = await Prd.findById(id);
   if (!prd) throw ApiError.notFound('PRD not found');
+  if (userId && prd.createdBy && prd.createdBy !== userId.toString()) {
+    throw ApiError.forbidden('You do not have access to this PRD');
+  }
   return prd;
 };
 
 /**
  * Get all PRDs (paginated)
  */
-const getAllPrds = async (page = 1, limit = 10) => {
+const getAllPrds = async (userId, page = 1, limit = 10) => {
+  const query = userId ? { createdBy: userId.toString() } : {};
   const skip = (page - 1) * limit;
   const [prds, total] = await Promise.all([
-    Prd.find().sort({ createdAt: -1 }).skip(skip).limit(limit).select('-rawContent -cleanedContent'),
-    Prd.countDocuments(),
+    Prd.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).select('-rawContent -cleanedContent'),
+    Prd.countDocuments(query),
   ]);
   return { prds, total, page, pages: Math.ceil(total / limit) };
 };
@@ -219,9 +225,12 @@ const getAllPrds = async (page = 1, limit = 10) => {
 /**
  * Delete a PRD and all related data
  */
-const deletePrd = async (id) => {
+const deletePrd = async (id, userId) => {
   const prd = await Prd.findById(id);
   if (!prd) throw ApiError.notFound('PRD not found');
+  if (userId && prd.createdBy && prd.createdBy !== userId.toString()) {
+    throw ApiError.forbidden('You do not have access to this PRD');
+  }
 
   await Promise.all([
     Feature.deleteMany({ prdId: id }),

@@ -1,3 +1,4 @@
+
 const Redis = require('ioredis');
 const config = require('./index');
 const logger = require('../utils/logger');

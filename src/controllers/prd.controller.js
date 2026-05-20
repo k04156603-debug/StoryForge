@@ -9,9 +9,9 @@ const uploadPrd = asyncHandler(async (req, res) => {
   let prd;
 
   if (req.file) {
-    prd = await prdService.createFromFile(req.file, req.body.title);
+    prd = await prdService.createFromFile(req.file, req.body.title, req.user._id);
   } else if (req.body.content) {
-    prd = await prdService.createFromPaste(req.body.content, req.body.title);
+    prd = await prdService.createFromPaste(req.body.content, req.body.title, req.user._id);
   } else {
     return res.status(400).json({
       success: false,
@@ -56,7 +56,7 @@ const processPrd = asyncHandler(async (req, res) => {
  * GET /api/prd/:id
  */
 const getPrd = asyncHandler(async (req, res) => {
-  const prd = await prdService.getPrdById(req.params.id);
+  const prd = await prdService.getPrdById(req.params.id, req.user._id);
 
   res.json({
     success: true,
@@ -84,7 +84,7 @@ const getAllPrds = asyncHandler(async (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
 
-  const result = await prdService.getAllPrds(page, limit);
+  const result = await prdService.getAllPrds(req.user._id, page, limit);
 
   res.json({
     success: true,
@@ -102,7 +102,7 @@ const getAllPrds = asyncHandler(async (req, res) => {
  * DELETE /api/prd/:id
  */
 const deletePrd = asyncHandler(async (req, res) => {
-  await prdService.deletePrd(req.params.id);
+  await prdService.deletePrd(req.params.id, req.user._id);
   res.json({ success: true, message: 'PRD deleted successfully' });
 });
 

@@ -3,7 +3,7 @@ const multer = require('multer');
 const prdController = require('../controllers/prd.controller');
 const { validate, prdUploadSchema, prdIdSchema } = require('../middleware/validator');
 const { aiLimiter } = require('../middleware/rateLimiter');
-const { protect } = require('../middleware/auth');
+const { protect, checkPrdAccess } = require('../middleware/auth');
 const config = require('../config');
 
 const router = express.Router();
@@ -25,8 +25,9 @@ const upload = multer({
   },
 });
 
-// All PRD routes require authentication
+// All PRD routes require authentication and ownership verification
 router.use(protect);
+router.use(checkPrdAccess);
 
 // Upload PRD (file or paste)
 router.post('/upload', upload.single('file'), validate(prdUploadSchema), prdController.uploadPrd);

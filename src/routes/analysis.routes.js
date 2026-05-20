@@ -1,7 +1,11 @@
 const express = require('express');
 const analysisController = require('../controllers/analysis.controller');
+const { protect, checkPrdAccess } = require('../middleware/auth');
 
 const router = express.Router();
+
+router.use(protect);
+router.use(checkPrdAccess);
 
 // Get quality issues
 router.get('/:prdId/issues', analysisController.getIssues);

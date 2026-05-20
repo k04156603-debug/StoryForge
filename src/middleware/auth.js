@@ -42,3 +42,46 @@ exports.protect = async (req, res, next) => {
     next(err);
   }
 };
+
+const Prd = require('../models/Prd');
+const UserStory = require('../models/UserStory');
+const QualityIssue = require('../models/QualityIssue');
+
+exports.checkPrdAccess = async (req, res, next) => {
+  try {
+    let prdId = req.params.prdId || req.body.prdId || req.query.prdId;
+
+    // 1. Direct PRD endpoint check
+    if (!prdId && req.baseUrl.endsWith('/prd') && req.params.id) {
+      prdId = req.params.id;
+    }
+
+    // 2. Story endpoint check
+    if (!prdId && req.baseUrl.endsWith('/stories') && req.params.id) {
+      const story = await UserStory.findById(req.params.id);
+      if (!story) throw new ApiError(404, 'User story not found');
+      prdId = story.prdId;
+    }
+
+    // 3. Quality issue endpoint check
+    if (!prdId && req.baseUrl.endsWith('/analysis') && req.params.id) {
+      const issue = await QualityIssue.findById(req.params.id);
+      if (!issue) throw new ApiError(404, 'Quality issue not found');
+      prdId = issue.prdId;
+    }
+
+    if (prdId) {
+      const prd = await Prd.findById(prdId);
+      if (!prd) throw new ApiError(404, 'PRD not found');
+      
+      if (prd.createdBy && prd.createdBy !== req.user._id.toString()) {
+        throw new ApiError(403, 'You do not have access to this PRD');
+      }
+    }
+
+    next();
+  } catch (err) {
+    next(err);
+  }
+};
+
