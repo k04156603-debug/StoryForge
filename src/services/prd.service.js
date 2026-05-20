@@ -77,13 +77,20 @@ const processPrd = async (prdId) => {
     const updateProgress = async (progress, message) => {
       prd.processingProgress = progress;
       prd.processingMessage = message;
-      await prd.save();
+      await Prd.updateOne(
+        { _id: prd._id },
+        { $set: { processingProgress: progress, processingMessage: message } }
+      );
     };
 
     // Stage 1: Extract features
-    await updateProgress(5, 'Starting AI analysis...');
     prd.status = 'extracting';
-    await prd.save();
+    prd.processingProgress = 5;
+    prd.processingMessage = 'Starting AI analysis...';
+    await Prd.updateOne(
+      { _id: prd._id },
+      { $set: { status: 'extracting', processingProgress: 5, processingMessage: 'Starting AI analysis...' } }
+    );
 
     const result = await aiPipeline.runFullPipeline(
       prd.cleanedContent,
@@ -173,25 +180,39 @@ const processPrd = async (prdId) => {
 
     // Finalize
     const actualTime = Math.round((Date.now() - startTime) / 1000);
-    prd.status = 'completed';
-    prd.processingProgress = 100;
-    prd.processingMessage = 'Processing complete!';
-    prd.metadata = {
+    const updatedMetadata = {
       ...prd.metadata,
       actualTime,
       featureCount: savedFeatures.length,
       storyCount: savedStories.length,
       issueCount: savedIssues.length,
     };
-    await prd.save();
+    
+    await Prd.updateOne(
+      { _id: prd._id },
+      {
+        $set: {
+          status: 'completed',
+          processingProgress: 100,
+          processingMessage: 'Processing complete!',
+          metadata: updatedMetadata,
+        }
+      }
+    );
 
     logger.info(`PRD ${prdId} processed successfully in ${actualTime}s`);
     return prd;
   } catch (error) {
-    prd.status = 'failed';
-    prd.error = error.message;
-    prd.processingMessage = 'Processing failed';
-    await prd.save();
+    await Prd.updateOne(
+      { _id: prd._id },
+      {
+        $set: {
+          status: 'failed',
+          error: error.message,
+          processingMessage: 'Processing failed'
+        }
+      }
+    ).catch(err => logger.error('Error saving failure status:', err));
     logger.error(`PRD ${prdId} processing failed:`, error.message);
     throw error;
   }
