@@ -24,8 +24,14 @@ app.set('trust proxy', 1);
 // ─── DB Readiness (critical for Vercel serverless cold starts) ────
 let dbPromise = null;
 app.use(async (req, res, next) => {
-  // Skip DB check for diagnostics endpoint
-  if (req.path.startsWith('/diagnostics')) return next();
+  // Skip DB check for health and diagnostics endpoints
+  const isBypassPath = 
+    req.path === '/diagnostics' || 
+    req.path === '/api/diagnostics' || 
+    req.path === '/health' || 
+    req.path === '/api/health';
+
+  if (isBypassPath) return next();
 
   // If already connected, proceed
   if (mongoose.connection.readyState === 1) return next();
