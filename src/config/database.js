@@ -6,8 +6,9 @@ const connectDatabase = async () => {
   try {
     const conn = await mongoose.connect(config.mongo.uri, {
       maxPoolSize: 10,
-      serverSelectionTimeoutMS: 15000,
+      serverSelectionTimeoutMS: 30000,
       socketTimeoutMS: 45000,
+      bufferTimeoutMS: 30000,
     });
 
     logger.info(`MongoDB connected: ${conn.connection.host}`);
@@ -32,6 +33,7 @@ const connectDatabase = async () => {
     if (!process.env.VERCEL) {
       process.exit(1);
     }
+    throw error; // Re-throw so callers know connection failed
   }
 };
 

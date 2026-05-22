@@ -18,9 +18,17 @@ function ensureDbConnected() {
 
 // Wrap the Express app to ensure DB is connected before handling any request
 module.exports = async (req, res) => {
-  // Wait for MongoDB to be fully connected before processing
-  if (mongoose.connection.readyState !== 1) {
+  try {
+    // Always await the connection promise — covers cold starts AND
+    // the race condition where readyState is 2 (connecting)
     await ensureDbConnected();
+  } catch (err) {
+    console.error('Failed to connect to MongoDB:', err.message);
+    res.status(503).json({
+      success: false,
+      message: 'Database connection failed. Please try again in a few seconds.',
+    });
+    return;
   }
   return app(req, res);
 };
