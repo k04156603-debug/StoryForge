@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
@@ -8,11 +9,34 @@ const errorHandler = require('./middleware/errorHandler');
 const morganMiddleware = require('./middleware/logger');
 const { apiLimiter } = require('./middleware/rateLimiter');
 const config = require('./config');
+const connectDatabase = require('./config/database');
 
 // Load passport Google strategy
 require('./config/passport');
 
 const app = express();
+
+// ─── DB Readiness (critical for Vercel serverless cold starts) ────
+let dbPromise = null;
+app.use(async (req, res, next) => {
+  if (mongoose.connection.readyState === 1) return next();
+  try {
+    if (!dbPromise) {
+      dbPromise = connectDatabase().catch(err => {
+        dbPromise = null;
+        throw err;
+      });
+    }
+    await dbPromise;
+    next();
+  } catch (err) {
+    console.error('DB middleware connection error:', err.message);
+    res.status(503).json({
+      success: false,
+      message: 'Database temporarily unavailable. Please retry.',
+    });
+  }
+});
 
 // ─── Trust Proxy (required for Render/Heroku/Railway) ────
 app.set('trust proxy', 1);
