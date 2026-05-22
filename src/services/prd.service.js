@@ -222,11 +222,35 @@ const processPrd = async (prdId) => {
  * Get PRD by ID with processing status
  */
 const getPrdById = async (id, userId) => {
-  const prd = await Prd.findById(id);
+  let prd = await Prd.findById(id);
   if (!prd) throw ApiError.notFound('PRD not found');
   if (userId && prd.createdBy && prd.createdBy !== userId.toString()) {
     throw ApiError.forbidden('You do not have access to this PRD');
   }
+
+  // Self-healing: If the PRD has been stuck in a processing status for more than 5 minutes,
+  // it means the serverless container timed out or crashed. Mark it as failed.
+  const processingStatuses = ['uploaded', 'extracting', 'generating', 'analyzing', 'dependencies'];
+  if (processingStatuses.includes(prd.status)) {
+    const staleThreshold = 5 * 60 * 1000; // 5 minutes
+    if (Date.now() - new Date(prd.updatedAt).getTime() > staleThreshold) {
+      logger.warn(`Self-healing: Marking stale PRD ${prd._id} as failed.`);
+      prd.status = 'failed';
+      prd.error = 'Processing timed out. Please try again.';
+      prd.processingMessage = 'Processing failed';
+      await Prd.updateOne(
+        { _id: prd._id },
+        { 
+          $set: { 
+            status: 'failed', 
+            error: 'Processing timed out. Please try again.',
+            processingMessage: 'Processing failed'
+          } 
+        }
+      );
+    }
+  }
+
   return prd;
 };
 
