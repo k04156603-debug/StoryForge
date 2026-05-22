@@ -108,10 +108,12 @@ const generateStories = async (features) => {
  
     allStories.push(...result.stories);
  
-    // Add 10s breather to avoid hitting Groq's TPM limit (Free tier is only 6k TPM)
+    // Add breather to avoid hitting Groq's TPM limit (Free tier is only 6k TPM)
+    // On Vercel serverless, keep this minimal to prevent Gateway Timeout (60s limit).
     if (i < features.length - 1) {
-      console.log(`[AI DEBUG] Rate limit breather: Waiting 10 seconds before next feature...`);
-      await new Promise(r => setTimeout(r, 10000));
+      const breatherMs = process.env.VERCEL === '1' ? 500 : 5000;
+      console.log(`[AI DEBUG] Rate limit breather: Waiting ${breatherMs}ms before next feature...`);
+      await new Promise(r => setTimeout(r, breatherMs));
     }
   }
 
