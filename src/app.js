@@ -16,14 +16,25 @@ require('./config/passport');
 
 const app = express();
 
+
+
+// ─── Trust Proxy (required for Render/Heroku/Railway) ────
+app.set('trust proxy', 1);
+
 // ─── DB Readiness (critical for Vercel serverless cold starts) ────
 let dbPromise = null;
 app.use(async (req, res, next) => {
+  // Skip DB check for diagnostics endpoint
+  if (req.path.startsWith('/diagnostics')) return next();
+
+  // If already connected, proceed
   if (mongoose.connection.readyState === 1) return next();
+
   try {
-    if (!dbPromise) {
+    // If we have no cached promise or connection is disconnected, create a new one
+    if (!dbPromise || mongoose.connection.readyState === 0) {
       dbPromise = connectDatabase().catch(err => {
-        dbPromise = null;
+        dbPromise = null; // reset for next attempt
         throw err;
       });
     }
@@ -38,12 +49,7 @@ app.use(async (req, res, next) => {
   }
 });
 
-// ─── Trust Proxy (required for Render/Heroku/Railway) ────
-app.set('trust proxy', 1);
-
-// ─── Passport ────────────────────────────────────
 app.use(passport.initialize());
-
 // ─── Security ────────────────────────────────────
 app.use(helmet());
 const allowedOrigins = [
@@ -63,6 +69,7 @@ app.use(cors({
 // ─── Body Parsing ────────────────────────────────
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
 
 // ─── Compression ─────────────────────────────────
 app.use(compression());

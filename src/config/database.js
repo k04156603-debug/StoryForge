@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+let lastError = null;
 const config = require('./index');
 const logger = require('../utils/logger');
 
@@ -24,6 +25,7 @@ const connectDatabase = async () => {
     return conn;
   } catch (error) {
     logger.error('Failed to connect to MongoDB:', error.message);
+    lastError = error;
     if (error.message.includes('whitelist') || error.message.includes('ECONNREFUSED') || error.message.includes('Could not connect')) {
       logger.error('💡 If using MongoDB Atlas, make sure your IP is whitelisted:');
       logger.error('   Go to Atlas → Network Access → Add Current IP Address');
@@ -38,3 +40,4 @@ const connectDatabase = async () => {
 };
 
 module.exports = connectDatabase;
+connectDatabase.getLastError = () => lastError;
