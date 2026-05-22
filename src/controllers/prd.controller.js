@@ -39,32 +39,17 @@ const uploadPrd = asyncHandler(async (req, res) => {
 const processPrd = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  const isVercel = process.env.VERCEL === '1';
-
-  if (isVercel) {
-    // On Vercel serverless, fire-and-forget is killed when res sends.
-    // We MUST await the full pipeline before responding.
-    try {
-      await prdService.processPrd(id);
-    } catch (err) {
-      // Error already saved to DB in service; the frontend polls for status
-    }
-    res.json({
-      success: true,
-      message: 'Processing complete',
-      data: { id },
-    });
-  } else {
-    // Local / non-serverless: run in background as before
-    prdService.processPrd(id).catch(() => {
-      // Error already logged and saved to DB
-    });
-    res.json({
-      success: true,
-      message: 'Processing started',
-      data: { id },
-    });
+  try {
+    await prdService.processPrd(id);
+  } catch (err) {
+    // Error already saved to DB in service
   }
+
+  res.json({
+    success: true,
+    message: 'Step completed',
+    data: { id },
+  });
 });
 
 /**

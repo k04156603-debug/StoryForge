@@ -66,154 +66,232 @@ const createFromPaste = async (content, title, userId) => {
  * Process a PRD through the AI pipeline
  */
 const processPrd = async (prdId) => {
-  const prd = await Prd.findById(prdId);
+  let prd = await Prd.findById(prdId);
   if (!prd) throw ApiError.notFound('PRD not found');
-  if (prd.status === 'completed') throw ApiError.badRequest('PRD already processed');
+  if (prd.status === 'completed') return prd;
 
   const startTime = Date.now();
 
   try {
-    // Update progress helper
-    const updateProgress = async (progress, message) => {
-      prd.processingProgress = progress;
-      prd.processingMessage = message;
-      await Prd.updateOne(
+    // Helper to update status/progress atomically
+    const updateState = async (status, progress, message, extra = {}) => {
+      const updateData = {
+        status,
+        processingProgress: progress,
+        processingMessage: message,
+        ...extra
+      };
+      prd = await Prd.findOneAndUpdate(
         { _id: prd._id },
-        { $set: { processingProgress: progress, processingMessage: message } }
+        { $set: updateData },
+        { new: true }
       );
     };
 
-    // Stage 1: Extract features
-    prd.status = 'extracting';
-    prd.processingProgress = 5;
-    prd.processingMessage = 'Starting AI analysis...';
-    await Prd.updateOne(
-      { _id: prd._id },
-      { $set: { status: 'extracting', processingProgress: 5, processingMessage: 'Starting AI analysis...' } }
-    );
+    if (prd.status === 'uploaded' || prd.status === 'failed') {
+      // Cleanup any previous incomplete run
+      await Promise.all([
+        Feature.deleteMany({ prdId: prd._id }),
+        UserStory.deleteMany({ prdId: prd._id }),
+        QualityIssue.deleteMany({ prdId: prd._id }),
+        DependencyGraph.deleteMany({ prdId: prd._id }),
+      ]);
 
-    const result = await aiPipeline.runFullPipeline(
-      prd.cleanedContent,
-      async (progress, message) => {
-        await updateProgress(progress, message);
-      }
-    );
+      // Move to extracting state
+      await updateState('extracting', 10, 'Extracting features from PRD...');
 
-    // Stage 2: Save features to DB
-    await updateProgress(90, 'Saving results...');
-    const savedFeatures = await Feature.insertMany(
-      result.features.map((f, i) => ({
-        prdId: prd._id,
-        name: f.name,
-        description: f.description,
-        category: f.category || 'core',
-        actors: f.actors || [],
-        flows: f.flows || [],
-        priority: f.priority || 'medium',
-        complexity: f.complexity || 'moderate',
-        order: i,
-      }))
-    );
+      const result = await aiPipeline.extractFeatures(prd.cleanedContent);
 
-    // Create feature name → id map
-    const featureMap = {};
-    savedFeatures.forEach((f) => {
-      featureMap[f.name] = f._id;
-    });
+      // Save features to DB
+      const savedFeatures = await Feature.insertMany(
+        result.features.map((f, i) => ({
+          prdId: prd._id,
+          name: f.name,
+          description: f.description,
+          category: f.category || 'core',
+          actors: f.actors || [],
+          flows: f.flows || [],
+          priority: f.priority || 'medium',
+          complexity: f.complexity || 'moderate',
+          order: i,
+        }))
+      );
 
-    // Stage 3: Save user stories
-    const savedStories = await UserStory.insertMany(
-      result.stories.map((s, i) => ({
-        prdId: prd._id,
-        featureId: featureMap[s.featureName] || savedFeatures[0]._id,
-        storyId: s.storyId,
-        title: s.title,
-        userStory: s.userStory,
-        acceptanceCriteria: s.acceptanceCriteria || [],
-        edgeCases: s.edgeCases || [],
-        storyPoints: s.storyPoints || 3,
-        priority: s.priority || 'medium',
-        tags: s.tags || [],
-        order: i,
-      }))
-    );
+      // Transition to extracting_done (which triggers story generation)
+      await updateState('extracting_done', 30, 'Features extracted.');
+      return prd;
+    }
 
-    // Stage 4: Save quality issues
-    const savedIssues = await QualityIssue.insertMany(
-      result.qualityIssues.map((issue) => ({
-        prdId: prd._id,
-        issueType: issue.issueType,
-        severity: issue.severity,
-        title: issue.title,
-        description: issue.description,
-        location: issue.location,
-        originalText: issue.originalText,
-        suggestedFix: issue.suggestedFix,
-      }))
-    );
+    if (prd.status === 'extracting_done') {
+      // Lock state to generating
+      await updateState('generating', 30, 'Generating stories...');
 
-    // Stage 5: Save dependency graph with story ObjectId references
-    const storyIdMap = {};
-    savedStories.forEach((s) => {
-      storyIdMap[s.storyId] = s._id;
-    });
+      const features = await Feature.find({ prdId: prd._id }).sort({ order: 1 });
+      const existingStories = await UserStory.find({ prdId: prd._id });
+      const completedFeatureIds = new Set(existingStories.map(s => s.featureId.toString()));
 
-    await DependencyGraph.create({
-      prdId: prd._id,
-      nodes: result.dependencies.nodes.map((n) => ({
-        id: n.id,
-        storyId: storyIdMap[n.id],
-        label: n.label,
-        featureName: n.featureName,
-        storyPoints: n.storyPoints,
-        priority: n.priority,
-        position: n.position,
-      })),
-      edges: result.dependencies.edges.map((e) => ({
-        id: e.id,
-        source: e.source,
-        target: e.target,
-        label: e.label,
-        type: e.type,
-      })),
-    });
+      const nextFeature = features.find(f => !completedFeatureIds.has(f._id.toString()));
 
-    // Finalize
-    const actualTime = Math.round((Date.now() - startTime) / 1000);
-    const updatedMetadata = {
-      ...prd.metadata,
-      actualTime,
-      featureCount: savedFeatures.length,
-      storyCount: savedStories.length,
-      issueCount: savedIssues.length,
-    };
-    
-    await Prd.updateOne(
-      { _id: prd._id },
-      {
-        $set: {
-          status: 'completed',
-          processingProgress: 100,
-          processingMessage: 'Processing complete!',
-          metadata: updatedMetadata,
+      if (nextFeature) {
+        const completedCount = completedFeatureIds.size + 1;
+        const totalCount = features.length;
+
+        await updateState(
+          'generating',
+          30 + Math.round((25 * (completedCount - 1)) / totalCount),
+          `Generating stories for feature: ${nextFeature.name} (${completedCount}/${totalCount})...`
+        );
+
+        const result = await aiPipeline.generateStories([nextFeature]);
+
+        // Save user stories for this feature
+        await UserStory.insertMany(
+          result.map((s, i) => ({
+            prdId: prd._id,
+            featureId: nextFeature._id,
+            storyId: s.storyId,
+            title: s.title,
+            userStory: s.userStory,
+            acceptanceCriteria: s.acceptanceCriteria || [],
+            edgeCases: s.edgeCases || [],
+            storyPoints: s.storyPoints || 3,
+            priority: s.priority || 'medium',
+            tags: s.tags || [],
+            order: existingStories.length + i,
+          }))
+        );
+
+        if (completedCount < totalCount) {
+          // Still have features left, set status back to extracting_done so client calls process again
+          await updateState(
+            'extracting_done',
+            30 + Math.round((25 * completedCount) / totalCount),
+            `Generated stories for ${completedCount}/${totalCount} features.`
+          );
+        } else {
+          // All features done!
+          await updateState(
+            'generating_done',
+            55,
+            'All user stories generated.'
+          );
         }
+      } else {
+        // No features or all features already done
+        await updateState(
+          'generating_done',
+          55,
+          'All user stories generated.'
+        );
       }
-    );
+      return prd;
+    }
 
-    logger.info(`PRD ${prdId} processed successfully in ${actualTime}s`);
+    if (prd.status === 'generating_done') {
+      await updateState('analyzing', 60, 'Starting quality analysis...');
+
+      const features = await Feature.find({ prdId: prd._id });
+      const qualityData = await aiPipeline.analyzeQuality(prd.cleanedContent, features);
+
+      // Save quality issues
+      await QualityIssue.insertMany(
+        qualityData.issues.map((issue) => ({
+          prdId: prd._id,
+          issueType: issue.issueType,
+          severity: issue.severity,
+          title: issue.title,
+          description: issue.description,
+          location: issue.location,
+          originalText: issue.originalText,
+          suggestedFix: issue.suggestedFix,
+        }))
+      );
+
+      // Save quality overallScore, summary to PRD metadata
+      const updatedMetadata = {
+        ...prd.metadata,
+        qualityScore: qualityData.overallScore,
+        qualitySummary: qualityData.summary,
+      };
+
+      await updateState('analyzing_done', 75, 'Quality analysis complete.', { metadata: updatedMetadata });
+      return prd;
+    }
+
+    if (prd.status === 'analyzing_done') {
+      await updateState('dependencies', 80, 'Mapping dependencies...');
+
+      const features = await Feature.find({ prdId: prd._id });
+      const featureMap = {};
+      features.forEach((f) => {
+        featureMap[f._id.toString()] = f.name;
+      });
+
+      const stories = await UserStory.find({ prdId: prd._id }).lean();
+      const storiesWithFeatureNames = stories.map((s) => ({
+        ...s,
+        featureName: featureMap[s.featureId.toString()] || 'Unknown Feature',
+      }));
+
+      const dependencyData = await aiPipeline.mapDependencies(storiesWithFeatureNames);
+
+      const storyIdMap = {};
+      stories.forEach((s) => {
+        storyIdMap[s.storyId] = s._id;
+      });
+
+      await DependencyGraph.create({
+        prdId: prd._id,
+        nodes: dependencyData.nodes.map((n) => ({
+          id: n.id,
+          storyId: storyIdMap[n.id],
+          label: n.label,
+          featureName: n.featureName,
+          storyPoints: n.storyPoints,
+          priority: n.priority,
+          position: n.position,
+        })),
+        edges: dependencyData.edges.map((e) => ({
+          id: e.id,
+          source: e.source,
+          target: e.target,
+          label: e.label,
+          type: e.type,
+        })),
+      });
+
+      // Finalize and calculate actual time
+      const actualTime = Math.round((Date.now() - new Date(prd.createdAt).getTime()) / 1000);
+      const featureCount = await Feature.countDocuments({ prdId: prd._id });
+      const storyCount = await UserStory.countDocuments({ prdId: prd._id });
+      const issueCount = await QualityIssue.countDocuments({ prdId: prd._id });
+
+      const updatedMetadata = {
+        ...prd.metadata,
+        actualTime,
+        featureCount,
+        storyCount,
+        issueCount,
+      };
+
+      await updateState('completed', 100, 'Processing complete!', { metadata: updatedMetadata });
+      return prd;
+    }
+
+    // If it's already in a busy state (e.g. extracting, generating, analyzing, dependencies), do nothing
     return prd;
   } catch (error) {
+    logger.error(`PRD ${prdId} processing failed at status ${prd.status}:`, error.message);
     await Prd.updateOne(
       { _id: prd._id },
       {
         $set: {
           status: 'failed',
           error: error.message,
-          processingMessage: 'Processing failed'
-        }
+          processingMessage: `Processing failed: ${error.message}`,
+        },
       }
-    ).catch(err => logger.error('Error saving failure status:', err));
-    logger.error(`PRD ${prdId} processing failed:`, error.message);
+    ).catch((err) => logger.error('Error saving failure status:', err));
     throw error;
   }
 };
@@ -230,7 +308,17 @@ const getPrdById = async (id, userId) => {
 
   // Self-healing: If the PRD has been stuck in a processing status for more than 5 minutes,
   // it means the serverless container timed out or crashed. Mark it as failed.
-  const processingStatuses = ['uploaded', 'extracting', 'generating', 'analyzing', 'dependencies'];
+  const processingStatuses = [
+    'uploaded',
+    'parsing',
+    'extracting',
+    'extracting_done',
+    'generating',
+    'generating_done',
+    'analyzing',
+    'analyzing_done',
+    'dependencies'
+  ];
   if (processingStatuses.includes(prd.status)) {
     const staleThreshold = 5 * 60 * 1000; // 5 minutes
     if (Date.now() - new Date(prd.updatedAt).getTime() > staleThreshold) {

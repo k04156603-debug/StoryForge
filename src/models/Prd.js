@@ -30,7 +30,19 @@ const prdSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['uploaded', 'parsing', 'extracting', 'generating', 'analyzing', 'completed', 'failed'],
+      enum: [
+        'uploaded',
+        'parsing',
+        'extracting',
+        'extracting_done',
+        'generating',
+        'generating_done',
+        'analyzing',
+        'analyzing_done',
+        'dependencies',
+        'completed',
+        'failed'
+      ],
       default: 'uploaded',
     },
     processingProgress: {
