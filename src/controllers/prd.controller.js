@@ -41,15 +41,22 @@ const processPrd = asyncHandler(async (req, res) => {
 
   try {
     await prdService.processPrd(id);
+    res.json({
+      success: true,
+      message: 'Step completed',
+      data: { id },
+    });
   } catch (err) {
-    // Error already saved to DB in service
+    if (err.isRetryable) {
+      return res.status(err.status === 429 ? 429 : 503).json({
+        success: false,
+        isRetryable: true,
+        retryAfter: err.retryAfter || 5,
+        message: err.message || 'Temporary rate limit or network error',
+      });
+    }
+    throw err;
   }
-
-  res.json({
-    success: true,
-    message: 'Step completed',
-    data: { id },
-  });
 });
 
 /**

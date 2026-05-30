@@ -282,16 +282,34 @@ const processPrd = async (prdId) => {
     return prd;
   } catch (error) {
     logger.error(`PRD ${prdId} processing failed at status ${prd.status}:`, error.message);
-    await Prd.updateOne(
-      { _id: prd._id },
-      {
-        $set: {
-          status: 'failed',
-          error: error.message,
-          processingMessage: `Processing failed: ${error.message}`,
-        },
-      }
-    ).catch((err) => logger.error('Error saving failure status:', err));
+    
+    if (error.isRetryable) {
+      let rollbackStatus = 'uploaded';
+      if (prd.status === 'generating') rollbackStatus = 'extracting_done';
+      else if (prd.status === 'analyzing') rollbackStatus = 'generating_done';
+      else if (prd.status === 'dependencies') rollbackStatus = 'analyzing_done';
+
+      await Prd.updateOne(
+        { _id: prd._id },
+        {
+          $set: {
+            status: rollbackStatus,
+            processingMessage: `Retryable error: ${error.message}`,
+          },
+        }
+      ).catch((err) => logger.error('Error saving rollback status:', err));
+    } else {
+      await Prd.updateOne(
+        { _id: prd._id },
+        {
+          $set: {
+            status: 'failed',
+            error: error.message,
+            processingMessage: `Processing failed: ${error.message}`,
+          },
+        }
+      ).catch((err) => logger.error('Error saving failure status:', err));
+    }
     throw error;
   }
 };

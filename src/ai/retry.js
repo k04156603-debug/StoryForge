@@ -11,6 +11,7 @@ const withRetry = async (fn, options = {}) => {
   const baseDelay = options.baseDelay || DEFAULT_BASE_DELAY;
   const context = options.context || 'AI call';
 
+  const isVercel = process.env.VERCEL === '1';
   let lastError;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -30,8 +31,21 @@ const withRetry = async (fn, options = {}) => {
         status: error.status
       });
 
-      if (!isRetryable || attempt === maxRetries) {
-        break;
+      if (!isRetryable || attempt === maxRetries || (isVercel && attempt >= 2)) {
+        if (isVercel && isRetryable) {
+          let retryAfter = 5;
+          if (isRateLimit) {
+            const match = error.message?.match(/try again in ([\d.]+)s/i);
+            if (match) {
+              retryAfter = Math.ceil(parseFloat(match[1]));
+            } else {
+              retryAfter = 10;
+            }
+          }
+          error.isRetryable = true;
+          error.retryAfter = retryAfter;
+        }
+        throw error;
       }
 
       // Calculate delay
@@ -47,6 +61,15 @@ const withRetry = async (fn, options = {}) => {
         } else {
           delay = Math.max(delay, 3000); // Wait at least 3s for rate limits
         }
+      }
+
+      // If we are on Vercel and the delay is too long (e.g. > 2 seconds), don't sleep in serverless container!
+      if (isVercel && delay > 2000) {
+        let retryAfter = Math.ceil(delay / 1000);
+        error.isRetryable = true;
+        error.retryAfter = retryAfter;
+        logger.info(`Vercel environment: aborting retry sleep and delegating ${retryAfter}s wait to client.`);
+        throw error;
       }
 
       logger.info(`Retrying ${context} in ${Math.round(delay)}ms...`);
@@ -78,3 +101,4 @@ const isRetryableError = (error) => {
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 module.exports = { withRetry };
+
