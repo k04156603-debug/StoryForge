@@ -23,12 +23,13 @@ const openai = new OpenAI(openaiConfig);
  * Call OpenAI with structured prompts
  */
 const callAI = async (systemPrompt, userPrompt, options = {}) => {
-  logger.info(`Calling AI model: ${options.model || config.openai.model}`);
-  console.log(`[AI DEBUG] Sending request to model: ${options.model || config.openai.model}`);
+  const primaryModel = options.model || config.openai.model;
+  logger.info(`Calling AI model: ${primaryModel}`);
+  console.log(`[AI DEBUG] Sending request to model: ${primaryModel}`);
   
   try {
     const response = await openai.chat.completions.create({
-      model: options.model || config.openai.model,
+      model: primaryModel,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
@@ -47,7 +48,41 @@ const callAI = async (systemPrompt, userPrompt, options = {}) => {
     logger.info(`AI call successful, tokens used: ${response.usage?.total_tokens}`);
     return response.choices[0].message.content;
   } catch (error) {
-    logger.error(`AI call failed: ${error.message}`, { status: error.status, code: error.code });
+    logger.error(`AI call failed on model ${primaryModel}: ${error.message}`, { status: error.status, code: error.code });
+    
+    // Check if it's a rate limit or daily limit exceed error and we can try the fallback model
+    const isLimitExceeded = error.status === 429 || error.message?.includes('Rate limit') || error.message?.includes('limit reached') || error.message?.includes('TPD') || error.message?.includes('TPM');
+    const fallbackModel = 'llama-3.1-8b-instant';
+    
+    if (isLimitExceeded && primaryModel !== fallbackModel) {
+      logger.info(`Limit hit on ${primaryModel}. Falling back to ${fallbackModel}...`);
+      console.log(`[AI DEBUG] Limit hit on ${primaryModel}. Falling back to ${fallbackModel}...`);
+      try {
+        const response = await openai.chat.completions.create({
+          model: fallbackModel,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          temperature: options.temperature ?? 0.3,
+          max_tokens: options.maxTokens || 4096,
+          response_format: { type: 'json_object' },
+        }, {
+          headers: {
+            'HTTP-Referer': config.frontendUrl || 'http://localhost:5173',
+            'X-Title': 'Story Forge',
+          }
+        });
+
+        console.log(`[AI DEBUG] Fallback response received. Length: ${response.choices[0].message.content.length}`);
+        logger.info(`Fallback AI call successful, tokens used: ${response.usage?.total_tokens}`);
+        return response.choices[0].message.content;
+      } catch (fallbackError) {
+        logger.error(`Fallback AI call failed on model ${fallbackModel}: ${fallbackError.message}`, { status: fallbackError.status, code: fallbackError.code });
+        throw fallbackError;
+      }
+    }
+    
     throw error;
   }
 };
