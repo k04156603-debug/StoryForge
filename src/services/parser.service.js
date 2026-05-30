@@ -15,6 +15,10 @@ const parseFile = async (file) => {
       return parsePdf(file.buffer);
     case 'docx':
       return parseDocx(file.buffer);
+    case 'pptx':
+      return parsePptx(file.buffer);
+    case 'ppt':
+      return parsePpt(file.buffer);
     case 'md':
     case 'txt':
       return parseText(file.buffer);
@@ -64,6 +68,65 @@ const parseDocx = async (buffer) => {
 };
 
 /**
+ * Parse PPTX buffer to text by extracting slide XML elements
+ */
+const parsePptx = async (buffer) => {
+  try {
+    const AdmZip = require('adm-zip');
+    const zip = new AdmZip(buffer);
+    const zipEntries = zip.getEntries();
+    let textContent = '';
+
+    // Sort slide entries numerically: ppt/slides/slide1.xml, ppt/slides/slide2.xml, ...
+    const slideEntries = zipEntries
+      .filter(entry => entry.entryName.startsWith('ppt/slides/slide') && entry.entryName.endsWith('.xml'))
+      .sort((a, b) => {
+        const numA = parseInt(a.entryName.replace(/[^0-9]/g, ''), 10) || 0;
+        const numB = parseInt(b.entryName.replace(/[^0-9]/g, ''), 10) || 0;
+        return numA - numB;
+      });
+
+    if (slideEntries.length === 0) {
+      throw new Error('No slides found in the PowerPoint presentation.');
+    }
+
+    for (const entry of slideEntries) {
+      const slideXml = entry.getData().toString('utf-8');
+      
+      // Extract text content from <a:t> tags
+      const matches = slideXml.match(/<a:t>([^<]*)<\/a:t>/g);
+      if (matches) {
+        const slideText = matches
+          .map(match => match.replace(/<\/?a:t>/g, ''))
+          .join(' ');
+        textContent += slideText + '\n';
+      }
+    }
+
+    const text = cleanText(textContent);
+    logger.info(`PPTX parsed: ${slideEntries.length} slides, ${text.length} chars`);
+    return {
+      content: text,
+      pageCount: slideEntries.length,
+      fileType: 'pptx',
+    };
+  } catch (error) {
+    logger.error('PPTX parsing failed:', error.message);
+    throw new Error(error.message || 'Failed to parse PPTX file. Please ensure it is a valid PowerPoint document.');
+  }
+};
+
+/**
+ * Handle legacy PPT binary upload by presenting a helpful conversion warning
+ */
+const parsePpt = async (buffer) => {
+  logger.warn('Legacy PPT upload attempted.');
+  throw new Error(
+    'Legacy PowerPoint (.ppt) files are not directly supported. Please save your presentation as modern PowerPoint (.pptx) or PDF format and try uploading again.'
+  );
+};
+
+/**
  * Parse plain text / markdown buffer
  */
 const parseText = async (buffer) => {
@@ -79,7 +142,14 @@ const parseText = async (buffer) => {
  */
 const getFileType = (filename) => {
   const ext = filename.split('.').pop().toLowerCase();
-  const typeMap = { pdf: 'pdf', docx: 'docx', md: 'markdown', txt: 'markdown' };
+  const typeMap = {
+    pdf: 'pdf',
+    docx: 'docx',
+    pptx: 'pptx',
+    ppt: 'ppt',
+    md: 'markdown',
+    txt: 'markdown'
+  };
   return typeMap[ext] || 'paste';
 };
 

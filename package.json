@@ -10,6 +10,7 @@
     "lint": "eslint src/"
   },
   "dependencies": {
+    "adm-zip": "^0.5.17",
     "bcryptjs": "^2.4.3",
     "bullmq": "^5.1.0",
     "compression": "^1.7.4",

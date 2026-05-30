@@ -14,7 +14,7 @@ const prdSchema = new mongoose.Schema(
     },
     fileType: {
       type: String,
-      enum: ['pdf', 'docx', 'markdown', 'paste'],
+      enum: ['pdf', 'docx', 'markdown', 'paste', 'pptx', 'ppt'],
       default: 'paste',
     },
     rawContent: {

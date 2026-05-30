@@ -13,14 +13,21 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: config.upload.maxFileSizeMB * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    const allowedTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/markdown', 'text/plain'];
-    const allowedExts = ['.pdf', '.docx', '.md', '.txt'];
+    const allowedTypes = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'application/vnd.ms-powerpoint',
+      'text/markdown',
+      'text/plain'
+    ];
+    const allowedExts = ['.pdf', '.docx', '.pptx', '.ppt', '.md', '.txt'];
     const ext = '.' + file.originalname.split('.').pop().toLowerCase();
 
     if (allowedTypes.includes(file.mimetype) || allowedExts.includes(ext)) {
       cb(null, true);
     } else {
-      cb(new Error('Only PDF, DOCX, and Markdown files are allowed'), false);
+      cb(new Error('Only PDF, DOCX, PPTX, PPT, and Markdown files are allowed'), false);
     }
   },
 });
